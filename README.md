@@ -104,7 +104,7 @@ ollama serve        # 默认监听 http://localhost:11434
 docker compose up -d mysql
 ```
 
-`sql/schema.sql` 会在容器首次启动时自动执行。
+`docs/schema.sql` 会在容器首次启动时自动执行。
 
 方式二，手动：
 

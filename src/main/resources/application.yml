@@ -1,0 +1,50 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: code-agent
+
+  # 自动加载项目根目录的 .env（格式为 KEY=VALUE），没有该文件也不影响启动
+  config:
+    import: optional:file:.env[.properties]
+
+  datasource:
+    url: "${DB_URL:jdbc:mysql://localhost:3306/code_agent_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}"
+    username: "${DB_USERNAME:root}"
+    password: "${DB_PASSWORD:}"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  ai:
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      init:
+        pull-model-strategy: never
+      chat:
+        temperature: ${OLLAMA_TEMPERATURE:0.2}
+        model: ${OLLAMA_CHAT_MODEL:qwen2.5:14b}
+        num-ctx: ${OLLAMA_NUM_CTX:8192}
+
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+
+logging:
+  level:
+    com.example.codeagent: INFO
+
+app:
+  review:
+    # 调度线程池大小：负责流程编排，不干重活
+    task-pool-size: ${REVIEW_TASK_POOL_SIZE:20}
+    # 专家线程池大小：并发调用模型，受本地显存限制，不要开太大
+    expert-pool-size: ${REVIEW_EXPERT_POOL_SIZE:5}
+    # 单次审查允许的最大代码字符数，超过则直接拒绝
+    max-code-length: ${REVIEW_MAX_CODE_LENGTH:12000}

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多 Agent 代码审查系统</title>
+    <!-- 引入 Markdown 渲染库 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #1e1e2e; --panel-bg: #2a2a3c; --text-color: #cdd6f4;
+            --accent-color: #89b4fa; --border-color: #45475a;
+            --risk-high: #f38ba8; --risk-med: #f9e2af; --risk-low: #a6e3a1;
+            --role-arch: #cba6f7; /* 架构专家专属颜色 */
+        }
+        body {
+            margin: 0; padding: 20px; font-family: 'Segoe UI', Tahoma, sans-serif;
+            background-color: var(--bg-color); color: var(--text-color);
+            display: flex; flex-direction: column; height: 100vh; box-sizing: border-box;
+        }
+        h1 { text-align: center; color: var(--accent-color); margin-top: 0; font-size: 24px; }
+        .container { display: flex; gap: 20px; flex: 1; overflow: hidden; }
+        .panel {
+            flex: 1; background-color: var(--panel-bg); border-radius: 8px;
+            padding: 20px; display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        textarea {
+            flex: 1; background-color: #11111b; color: #a6e3a1;
+            border: 1px solid var(--border-color); border-radius: 4px;
+            padding: 10px; font-family: 'Consolas', monospace; font-size: 14px;
+            resize: none; outline: none;
+        }
+        textarea::placeholder { color: #585b70; }
+
+        button {
+            margin-top: 15px; padding: 12px; border: none; border-radius: 4px;
+            background-color: var(--accent-color); color: #11111b;
+            font-weight: bold; font-size: 16px; cursor: pointer; transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.8; }
+        button:disabled { background-color: #585b70; cursor: not-allowed; }
+
+        /* 右侧结果区 */
+        .result-container { flex: 1; overflow-y: auto; padding-right: 10px; }
+        .placeholder { text-align: center; color: #585b70; margin-top: 50px; }
+
+        /* SSE 终端日志区 */
+        #terminalLog {
+            margin-bottom: 20px; padding: 15px; background-color: #11111b;
+            border-radius: 8px; border: 1px solid #313244;
+            font-family: 'Consolas', monospace; font-size: 13px;
+            color: #89b4fa; line-height: 1.6; display: none;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        /* 漏洞卡片 */
+        .issue-card {
+            background-color: #313244; border-left: 5px solid var(--border-color);
+            padding: 15px; margin-bottom: 15px; border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        /* 风险等级颜色 */
+        .issue-card.HIGH { border-left-color: var(--risk-high); }
+        .issue-card.MEDIUM { border-left-color: var(--risk-med); }
+        .issue-card.LOW { border-left-color: var(--risk-low); }
+
+        .issue-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: bold; }
+        .risk-tag { padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+        .risk-tag.HIGH { background-color: rgba(243,139,168,0.2); color: var(--risk-high); }
+        .risk-tag.MEDIUM { background-color: rgba(249,226,175,0.2); color: var(--risk-med); }
+        .risk-tag.LOW { background-color: rgba(166,227,161,0.2); color: var(--risk-low); }
+
+        /* 针对特定专家的微调 */
+        .role-badge {
+            display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-right: 8px;
+        }
+        .role-badge.BUG_HUNTER { background-color: rgba(137,180,250,0.2); color: #89b4fa; }
+        .role-badge.SECURITY { background-color: rgba(243,139,168,0.2); color: #f38ba8; }
+        .role-badge.ARCHITECT { background-color: rgba(203,166,247,0.2); color: #cba6f7; }
+
+        .issue-card p { margin: 8px 0; font-size: 14px; line-height: 1.5; color: #bac2de; }
+        .issue-card strong { color: var(--text-color); }
+
+        /* Markdown 报告 */
+        #reportContent {
+            margin-top: 20px; padding: 15px; background-color: #181825;
+            border-radius: 8px; display: none; border: 1px solid #313244;
+        }
+        #reportContent h1, #reportContent h2 { color: var(--accent-color); border-bottom: 1px solid #313244; padding-bottom: 5px;}
+        #reportContent pre { background-color: #1e1e2e; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        #reportContent code { font-family: 'Consolas', monospace; color: #f9e2af; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+    </style>
+</head>
+<body>
+<h1>多 Agent 代码审查系统</h1>
+
+<div class="container">
+    <div class="panel">
+        <h3>待审查代码</h3>
+        <!-- 使用 placeholder 代替默认内容 -->
+        <textarea id="codeInput" placeholder="请在此处粘贴或输入需要审查的 Java 代码..."></textarea>
+        <button id="submitBtn" onclick="submitReview()">提交审查</button>
+    </div>
+
+    <div class="panel">
+        <h3>审查结果</h3>
+        <div class="result-container" id="resultContainer">
+            <div class="placeholder" id="placeholder">等待提交代码...</div>
+            <!-- 实时日志终端 -->
+            <div id="terminalLog"></div>
+            <!-- 卡片区 -->
+            <div id="issuesList"></div>
+            <!-- 最终报告区 -->
+            <div id="reportContent"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let eventSource = null;
+
+    async function submitReview() {
+        const code = document.getElementById('codeInput').value;
+        if (!code.trim()) {
+            alert("请输入要审查的代码！");
+            document.getElementById('codeInput').focus();
+            return;
+        }
+
+        // 1. UI 重置
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerText = "审查中...";
+        document.getElementById('placeholder').style.display = 'none';
+        document.getElementById('issuesList').innerHTML = '';
+        document.getElementById('reportContent').style.display = 'none';
+
+        const terminal = document.getElementById('terminalLog');
+        terminal.innerHTML = '';
+        terminal.style.display = 'block';
+
+        try {
+            // 2. 提交审查任务
+            const submitRes = await fetch('/api/review/multi-agent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: code
+            });
+
+            const submitText = await submitRes.text();
+            const taskId = submitText.match(/\d+/)[0];
+
+            appendLog(`> 任务已提交，任务ID: ${taskId}`, '#a6e3a1');
+
+            // 3. 建立 SSE 连接
+            await connectSSE(taskId);
+
+        } catch (error) {
+            console.error(error);
+            appendLog(`> 发生错误: ${error.message}`, '#f38ba8');
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "提交审查";
+        }
+    }
+
+    function connectSSE(taskId) {
+        return new Promise((resolve) => {
+            if (eventSource) eventSource.close();
+            eventSource = new EventSource(`/api/review/stream/${taskId}`);
+
+            eventSource.onmessage = function(event) {
+                // 实时打印后端推过来的日志
+                appendLog(`> ${event.data}`);
+
+                // 监听后端发出的结束信号
+                if (event.data.includes("审查流程全部完成")) {
+                    eventSource.close();
+                    eventSource = null;
+                    appendLog("> 正在获取最终详细报告...", '#f9e2af');
+
+                    // 延迟等待数据库事务完全提交
+                    setTimeout(async () => {
+                        const res = await fetch(`/api/review/detail/${taskId}`);
+                        const data = await res.json();
+                        renderResult(data);
+                        resolve();
+                    }, 800);
+                }
+            };
+
+            eventSource.onerror = function() {
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+                resolve();
+            };
+        });
+    }
+
+    function appendLog(text, color = '#89b4fa') {
+        const terminal = document.getElementById('terminalLog');
+        const div = document.createElement('div');
+        div.style.color = color;
+        div.style.marginBottom = '4px';
+        div.innerText = text;
+        terminal.appendChild(div);
+        terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    // 专家角色名称映射
+    function getRoleDisplayName(role) {
+        switch(role) {
+            case 'BUG_HUNTER': return 'Bug 猎手';
+            case 'SECURITY': return '安全专家';
+            case 'ARCHITECT': return '架构专家';
+            default: return role || '未知专家';
+        }
+    }
+
+    function renderResult(data) {
+        // 渲染漏洞卡片
+        const issuesList = document.getElementById('issuesList');
+        if (data.issueList && data.issueList.length > 0) {
+            data.issueList.forEach(issue => {
+                let riskLevel = issue.riskLevel ? issue.riskLevel.toUpperCase() : 'LOW';
+                if (riskLevel.includes('高') || riskLevel === 'HIGH') riskLevel = 'HIGH';
+                else if (riskLevel.includes('中') || riskLevel === 'MEDIUM') riskLevel = 'MEDIUM';
+                else riskLevel = 'LOW';
+
+                const roleName = getRoleDisplayName(issue.agentRole);
+                const roleClass = issue.agentRole || 'UNKNOWN';
+
+                const card = document.createElement('div');
+                card.className = `issue-card ${riskLevel}`;
+
+                // 展示具体的代码位置 (如果后端传了 location)
+                const locationHtml = issue.location ? `<p><strong>定位：</strong><code>${issue.location}</code></p>` : '';
+
+                card.innerHTML = `
+                        <div class="issue-header">
+                            <span>
+                                <span class="role-badge ${roleClass}">${roleName}</span>
+                                发现隐患
+                            </span>
+                            <span class="risk-tag ${riskLevel}">${issue.riskLevel || '低'}风险</span>
+                        </div>
+                        ${locationHtml}
+                        <p><strong>描述：</strong>${issue.description || '无描述'}</p>
+                        <p><strong>建议：</strong>${issue.suggestion || '无建议'}</p>
+                    `;
+                issuesList.appendChild(card);
+            });
+        } else {
+            issuesList.innerHTML = '<div class="issue-card LOW"><p>未发现明显漏洞，代码质量良好。</p></div>';
+        }
+
+        // 渲染 Markdown 报告
+        const reportDiv = document.getElementById('reportContent');
+        if (data.taskInfo && data.taskInfo.finalReport) {
+            reportDiv.innerHTML = marked.parse(data.taskInfo.finalReport);
+            reportDiv.style.display = 'block';
+        }
+
+        // 滚动到底部
+        const resultContainer = document.getElementById('resultContainer');
+        resultContainer.scrollTop = resultContainer.scrollHeight;
+    }
+</script>
+</body>
+</html>

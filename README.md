@@ -11,6 +11,7 @@
 把一段 Java 代码丢进去，**三个不同角色的 AI 专家并发审查**，前端通过 SSE 实时看到每个专家的进度，最后产出一份按风险等级分级的 Markdown 审查报告。
 
 ![界面截图](docs/screenshot.png)
+
 ---
 
 ## 为什么做这个
@@ -63,7 +64,7 @@ flowchart LR
 2. 后端立刻插入一条 `review_task`（`PROCESSING`），把 `taskId` 返回给前端 —— **不阻塞请求**。
 3. 任务被提交到调度线程池，`ReviewOrchestrator` 再把三个专家分发给专家线程池并发执行。
 4. 每个专家调用一次模型，结果反序列化成 `AgentReviewResult`，同时往前端推一条进度消息。
-5. 三个专家全部结束后，问题明细批量写入 `review_issue`。
+5. 三个专家全部结束后，问题明细逐条写入 `review_issue`。
 6. 汇总阶段再调一次模型，把明细整理成 Markdown 报告，回写 `final_report` 并把状态置为 `COMPLETED`。
 7. 前端收到「审查流程全部完成」后，调用 `/detail/{taskId}` 拉取明细与报告并渲染。
 
@@ -181,7 +182,7 @@ Accept: text/event-stream
 事件内容为纯文本进度，例如：
 
 ```
-data: 已加载 3 个专家
+data: 任务已创建，正在启动多 Agent 并发审查...
 data: Agent [BUG_HUNTER] 正在扫描代码...
 data: [SECURITY] 发现 2 处问题。
 data: 审查流程全部完成。
@@ -236,7 +237,7 @@ GET /api/review/detail/{taskId}
 ## 已知限制 / Roadmap
 
 - [ ] **代码长度未做切分**：目前整段代码一次性进 Prompt，超过 `OLLAMA_NUM_CTX` 会失败。下一步做文件切块 + 向量检索（RAG），让 Agent 只取相关片段。
-- [ ] **SSE 断线不重连**：页面刷新后已推送的进度丢失，后续可加分片 id 与事件回放。
+- [ ] **页面刷新后无法恢复**：`taskId` 只存在页面内存里，刷新后不会自动续接；服务端已支持消息回放，前端补上 `taskId` 持久化即可。
 - [ ] **无鉴权与限流**：`userId` 目前是查询参数，任何人都能调用，仅适合本地演示。
 - [ ] **单机部署**：线程池与任务状态都在单进程内，未做分布式改造。
 - [ ] 问题明细逐条插入，量大时可改为批量写入。
@@ -258,7 +259,9 @@ Code-Agent
 ├── src/main/resources
 │   ├── application.yml
 │   └── static/index.html                 # 单页前端
-├── docs/schema.sql
+├── docs
+│   ├── schema.sql                        # 建表脚本
+│   └── screenshot.png                    # 界面截图
 ├── docker-compose.yml
 └── .env.example
 ```

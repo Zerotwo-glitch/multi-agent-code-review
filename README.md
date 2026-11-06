@@ -78,7 +78,7 @@ flowchart LR
 | 持久层 | MyBatis-Plus 3.5 |
 | 数据库 | MySQL 8 |
 | 实时通信 | SSE（`SseEmitter`） |
-| 前端 | 原生 HTML + JS（无构建） |
+| 前端 | Vue 3 + Vite 6（独立工程，`npm run build` 后产物进 `static/`） |
 
 ## 快速开始
 
@@ -143,6 +143,17 @@ mvnw.cmd spring-boot:run
 ```
 
 浏览器打开 <http://localhost:8080>，粘贴一段 Java 代码，点「提交审查」。
+
+### 6. 前端开发（可选）
+
+`src/main/resources/static` 里放的是构建产物，改前端要去 `frontend/` 工程里改：
+
+```bash
+cd frontend
+npm ci
+npm run dev      # 开发模式，http://localhost:5173，自动代理 /api 到 8080
+npm run build    # 产物在 dist/，拷到 src/main/resources/static 后重新打包
+```
 
 ## 配置项
 
@@ -258,7 +269,13 @@ Code-Agent
 │   └── mapper                            # MyBatis-Plus Mapper
 ├── src/main/resources
 │   ├── application.yml
-│   └── static/index.html                 # 单页前端
+│   └── static                            # 前端构建产物（Vite 打包后拷进来）
+├── frontend                              # Vue 3 + Vite 前端工程
+│   ├── src
+│   │   ├── App.vue                       # 主界面：代码编辑器 / 智能体卡片 / 进度 / 报告
+│   │   ├── api.js                        # 接口封装（提交任务、SSE 订阅、查详情）
+│   │   └── components                    # AgentCard / IssueCard / ConsoleLog / Icon
+│   └── vite.config.js
 ├── docs
 │   ├── schema.sql                        # 建表脚本
 │   └── screenshot.png                    # 界面截图

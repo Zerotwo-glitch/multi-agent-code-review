@@ -45,3 +45,7 @@ logs/
 *.log
 .DS_Store
 Thumbs.db
+
+# ===== 前端 =====
+node_modules/
+frontend/dist/
